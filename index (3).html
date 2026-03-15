@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRID — Photo Collage Builder</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0e0e0e;
+  --surface: #161616;
+  --border: #2a2a2a;
+  --accent: #e8ff47;
+  --text: #f0f0f0;
+  --muted: #555;
+  --gap: 3px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px 60px;
+}
+
+header {
+  width: 100%;
+  max-width: 900px;
+  margin-bottom: 36px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+
+.logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 80px;
+  letter-spacing: 6px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.tagline {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.controls {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.upload-zone {
+  flex: 1;
+  min-width: 220px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 18px 24px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  background: var(--surface);
+}
+
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent);
+  background: #1a1a0a;
+}
+
+.upload-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.upload-label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.upload-label span { color: var(--accent); }
+
+.count-badge {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  color: var(--accent);
+  letter-spacing: 2px;
+}
+
+.btn {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 14px 22px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary {
+  background: var(--accent);
+  color: #0e0e0e;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.btn.primary:hover { background: #d4ea30; border-color: #d4ea30; }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn.primary:disabled:hover { background: var(--accent); color: #0e0e0e; }
+
+.options-row {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.option-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.option-group label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.option-group select, .option-group input[type="number"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  outline: none;
+}
+
+.option-group select:focus, .option-group input:focus { border-color: var(--accent); }
+.option-group input[type="number"] { width: 70px; }
+
+#center-section {
+  width: 100%;
+  max-width: 900px;
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 18px 24px;
+  background: var(--surface);
+  display: none;
+}
+
+#center-section.visible { display: block; }
+
+.center-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.center-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.center-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.center-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 11px;
+  transition: background 0.2s;
+}
+
+.center-toggle input:checked + .center-toggle-track { background: var(--accent); }
+
+.center-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--bg);
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.center-toggle input:checked ~ .center-toggle-thumb { transform: translateX(18px); }
+
+.center-label-text {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.center-label-text strong { color: var(--accent); font-weight: 400; }
+
+#center-controls {
+  display: none;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+#center-controls.active { display: flex; }
+
+.center-thumb-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.center-thumb {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  opacity: 0.5;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.center-thumb:hover { opacity: 0.9; }
+.center-thumb.selected { border-color: var(--accent); opacity: 1; }
+
+.center-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.center-preview-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#center-preview-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 2px solid var(--accent);
+  display: none;
+}
+
+#center-preview-placeholder {
+  width: 80px;
+  height: 80px;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-align: center;
+  padding: 8px;
+}
+
+#preview-section {
+  width: 100%;
+  max-width: 900px;
+  display: none;
+}
+
+.section-label {
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+#grid-preview {
+  width: 100%;
+  display: grid;
+  gap: var(--gap);
+  background: #111;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#grid-preview .cell {
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: #1a1a1a;
+  position: relative;
+}
+
+#grid-preview .cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+#grid-preview .cell.empty { background: #151515; }
+
+#grid-preview .cell.center-cell::after {
+  content: '★ CENTER';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #0e0e0e;
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 1px;
+  padding: 2px 5px;
+  border-radius: 2px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#export-canvas { display: none; }
+
+.status {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 8px;
+  text-align: right;
+}
+
+#empty-state {
+  width: 100%;
+  max-width: 900px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+#empty-state .big {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 48px;
+  letter-spacing: 4px;
+  color: #222;
+  display: block;
+  margin-bottom: 8px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">GRID</div>
+  <div class="tagline">Photo Collage Builder — up to 100 images</div>
+</header>
+
+<div class="controls">
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="file-input" accept="image/*" multiple>
+    <div class="upload-label">
+      <span>+ Add photos</span> — drag &amp; drop or click<br>
+      <span id="count-text" style="font-size:10px; margin-top:4px; display:block;">0 / 100 loaded</span>
+    </div>
+  </div>
+  <div class="count-badge" id="count-badge">00</div>
+  <button class="btn" id="clear-btn" disabled>Clear</button>
+</div>
+
+<div class="options-row">
+  <div class="option-group">
+    <label>Columns</label>
+    <select id="cols-select">
+      <option value="auto">Auto</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="8">8</option>
+      <option value="10">10</option>
+    </select>
+  </div>
+  <div class="option-group">
+    <label>Output size (px)</label>
+    <input type="number" id="output-size" value="3000" min="500" max="8000" step="100">
+  </div>
+  <button class="btn primary" id="download-btn" disabled>↓ Download Collage</button>
+</div>
+
+<div id="center-section">
+  <div class="center-header">
+    <label class="center-toggle">
+      <input type="checkbox" id="center-toggle-cb">
+      <div class="center-toggle-track"></div>
+      <div class="center-toggle-thumb"></div>
+    </label>
+    <span class="center-label-text">Center Photo — <strong>pin one image to the middle cell</strong></span>
+  </div>
+  <div id="center-controls">
+    <div class="center-thumb-strip" id="center-thumb-strip"></div>
+    <div class="center-preview-wrap">
+      <div class="center-preview-label">Center</div>
+      <img id="center-preview-img" src="" alt="center photo">
+      <div id="center-preview-placeholder">Pick a photo</div>
+    </div>
+  </div>
+</div>
+
+<div id="empty-state">
+  <span class="big">NO PHOTOS YET</span>
+  Add up to 100 images to get started
+</div>
+
+<div id="preview-section">
+  <div class="section-label">Preview</div>
+  <div id="grid-preview"></div>
+  <div class="status" id="status-text"></div>
+</div>
+
+<canvas id="export-canvas"></canvas>
+
+<script>
+const fileInput        = document.getElementById('file-input');
+const uploadZone       = document.getElementById('upload-zone');
+const countBadge       = document.getElementById('count-badge');
+const countText        = document.getElementById('count-text');
+const clearBtn         = document.getElementById('clear-btn');
+const downloadBtn      = document.getElementById('download-btn');
+const colsSelect       = document.getElementById('cols-select');
+const outputSize       = document.getElementById('output-size');
+const gridPreview      = document.getElementById('grid-preview');
+const previewSection   = document.getElementById('preview-section');
+const emptyState       = document.getElementById('empty-state');
+const statusText       = document.getElementById('status-text');
+const canvas           = document.getElementById('export-canvas');
+const centerSection    = document.getElementById('center-section');
+const centerToggleCb   = document.getElementById('center-toggle-cb');
+const centerControls   = document.getElementById('center-controls');
+const centerThumbStrip = document.getElementById('center-thumb-strip');
+const centerPreviewImg = document.getElementById('center-preview-img');
+const centerPlaceholder= document.getElementById('center-preview-placeholder');
+
+let images = [];
+let centerIndex = null;
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+clearBtn.addEventListener('click', clearAll);
+colsSelect.addEventListener('change', renderPreview);
+downloadBtn.addEventListener('click', exportCollage);
+
+centerToggleCb.addEventListener('change', () => {
+  const on = centerToggleCb.checked;
+  centerControls.classList.toggle('active', on);
+  if (!on) { centerIndex = null; updateCenterPreview(); }
+  renderPreview();
+});
+
+function handleFiles(files) {
+  const remaining = 100 - images.length;
+  const toAdd = Array.from(files).slice(0, remaining);
+  let loaded = 0;
+  if (toAdd.length === 0) return;
+  toAdd.forEach(file => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      images.push({ file, url, img });
+      loaded++;
+      updateCount();
+      buildThumbStrip();
+      if (loaded === toAdd.length) renderPreview();
+    };
+    img.src = url;
+  });
+  fileInput.value = '';
+}
+
+function updateCount() {
+  const n = images.length;
+  countBadge.textContent = String(n).padStart(2, '0');
+  countText.textContent  = n + ' / 100 loaded';
+  clearBtn.disabled      = n === 0;
+  downloadBtn.disabled   = n === 0;
+  centerSection.classList.toggle('visible', n > 0);
+}
+
+function buildThumbStrip() {
+  centerThumbStrip.innerHTML = '';
+  images.forEach((item, idx) => {
+    const thumb = document.createElement('img');
+    thumb.className = 'center-thumb' + (idx === centerIndex ? ' selected' : '');
+    thumb.src = item.url;
+    thumb.addEventListener('click', () => {
+      centerIndex = (centerIndex === idx) ? null : idx;
+      document.querySelectorAll('.center-thumb').forEach((t, i) => {
+        t.classList.toggle('selected', i === centerIndex);
+      });
+      updateCenterPreview();
+      renderPreview();
+    });
+    centerThumbStrip.appendChild(thumb);
+  });
+}
+
+function updateCenterPreview() {
+  if (centerIndex !== null && images[centerIndex]) {
+    centerPreviewImg.src = images[centerIndex].url;
+    centerPreviewImg.style.display = 'block';
+    centerPlaceholder.style.display = 'none';
+  } else {
+    centerPreviewImg.style.display = 'none';
+    centerPlaceholder.style.display = 'flex';
+  }
+}
+
+function getGrid(n) {
+  const sel = colsSelect.value;
+  let cols = sel === 'auto' ? Math.ceil(Math.sqrt(n)) : parseInt(sel);
+  if (centerToggleCb.checked && centerIndex !== null && cols % 2 === 0) cols++;
+  cols = Math.min(cols, n);
+  const rows = Math.ceil(n / cols);
+  return { cols, rows };
+}
+
+function buildOrder(n, cols, rows) {
+  const total = cols * rows;
+  const centerCell = Math.floor(total / 2);
+  const useCenterFeature = centerToggleCb.checked && centerIndex !== null && n > 1;
+
+  if (!useCenterFeature) {
+    return Array.from({ length: total }, (_, i) => (i < n ? i : null));
+  }
+
+  const others = [];
+  for (let i = 0; i < n; i++) { if (i !== centerIndex) others.push(i); }
+
+  const order = [];
+  let ptr = 0;
+  for (let i = 0; i < total; i++) {
+    if (i === centerCell) order.push(centerIndex);
+    else if (ptr < others.length) order.push(others[ptr++]);
+    else order.push(null);
+  }
+  return order;
+}
+
+function renderPreview() {
+  const n = images.length;
+  if (n === 0) {
+    previewSection.style.display = 'none';
+    emptyState.style.display = 'block';
+    return;
+  }
+  emptyState.style.display = 'none';
+  previewSection.style.display = 'block';
+
+  const { cols, rows } = getGrid(n);
+  const total = cols * rows;
+  const order = buildOrder(n, cols, rows);
+  const centerCell = Math.floor(total / 2);
+  const useCenterFeature = centerToggleCb.checked && centerIndex !== null;
+
+  gridPreview.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+  gridPreview.innerHTML = '';
+
+  order.forEach((imgIdx, cellIdx) => {
+    const cell = document.createElement('div');
+    const isEmpty = imgIdx === null;
+    const isCenterCell = useCenterFeature && cellIdx === centerCell;
+    cell.className = 'cell' + (isEmpty ? ' empty' : '') + (isCenterCell ? ' center-cell' : '');
+    if (!isEmpty) {
+      const im = document.createElement('img');
+      im.src = images[imgIdx].url;
+      cell.appendChild(im);
+    }
+    gridPreview.appendChild(cell);
+  });
+
+  const centerNote = useCenterFeature ? ' · center pinned' : '';
+  statusText.textContent = cols + ' cols × ' + rows + ' rows — ' + n + ' photos' + centerNote;
+}
+
+function clearAll() {
+  images.forEach(i => URL.revokeObjectURL(i.url));
+  images = [];
+  centerIndex = null;
+  centerToggleCb.checked = false;
+  centerControls.classList.remove('active');
+  updateCenterPreview();
+  buildThumbStrip();
+  updateCount();
+  renderPreview();
+}
+
+function exportCollage() {
+  const n = images.length;
+  if (n === 0) return;
+  downloadBtn.disabled = true;
+  downloadBtn.textContent = 'Rendering...';
+
+  const { cols, rows } = getGrid(n);
+  const order = buildOrder(n, cols, rows);
+  const TOTAL_SIZE = parseInt(outputSize.value) || 3000;
+  const GAP   = Math.max(2, Math.round(TOTAL_SIZE * 0.001));
+  const cellW = Math.floor((TOTAL_SIZE - GAP * (cols - 1)) / cols);
+  const cellH = Math.floor((TOTAL_SIZE - GAP * (rows - 1)) / rows);
+  const canvasW = cellW * cols + GAP * (cols - 1);
+  const canvasH = cellH * rows + GAP * (rows - 1);
+
+  canvas.width  = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  order.forEach((imgIdx, cellIdx) => {
+    if (imgIdx === null) return;
+    const col = cellIdx % cols;
+    const row = Math.floor(cellIdx / cols);
+    const x = col * (cellW + GAP);
+    const y = row * (cellH + GAP);
+    const img = images[imgIdx].img;
+    const srcAspect = img.naturalWidth / img.naturalHeight;
+    const dstAspect = cellW / cellH;
+    let sx, sy, sw, sh;
+    if (srcAspect > dstAspect) {
+      sh = img.naturalHeight; sw = sh * dstAspect;
+      sx = (img.naturalWidth - sw) / 2; sy = 0;
+    } else {
+      sw = img.naturalWidth; sh = sw / dstAspect;
+      sx = 0; sy = (img.naturalHeight - sh) / 2;
+    }
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, cellW, cellH);
+  });
+
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'collage-' + n + 'photos-' + Date.now() + '.jpg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    downloadBtn.disabled = false;
+    downloadBtn.textContent = '↓ Download Collage';
+  }, 'image/jpeg', 0.95);
+}
+</script>
+</body>
+</html>
