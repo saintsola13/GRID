@@ -325,10 +325,12 @@ header {
   max-width: min(100%, 70vh);
   aspect-ratio: 1;
   display: grid;
-  gap: var(--gap);
-  background: #111;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  gap: var(--frame-gap, var(--gap));
+  padding: var(--frame-gap, var(--gap));
+  box-sizing: border-box;
+  background: var(--frame-color, #000000);
+  border: none;
+  border-radius: 0;
   overflow: hidden;
   margin-inline: auto;
 }
@@ -348,7 +350,7 @@ header {
   display: block;
 }
 
-#grid-preview .cell.empty { background: #151515; }
+#grid-preview .cell.empty { background: transparent; }
 
 #grid-preview .cell.center-cell::after {
   content: '★ CENTER';
@@ -437,6 +439,21 @@ header {
     <label>Output size (px)</label>
     <input type="number" id="output-size" value="3000" min="500" max="8000" step="100">
   </div>
+  <div class="option-group">
+    <label>Frame</label>
+    <select id="frame-color">
+      <option value="#000000">Black</option>
+      <option value="#ffffff">White</option>
+    </select>
+  </div>
+  <div class="option-group">
+    <label>Border / gap</label>
+    <select id="frame-gap">
+      <option value="thin">Thin</option>
+      <option value="medium" selected>Medium</option>
+      <option value="thick">Thick</option>
+    </select>
+  </div>
   <button class="btn primary" id="download-btn" disabled>↓ Download Collage</button>
 </div>
 
@@ -481,6 +498,8 @@ const clearBtn         = document.getElementById('clear-btn');
 const downloadBtn      = document.getElementById('download-btn');
 const colsSelect       = document.getElementById('cols-select');
 const outputSize       = document.getElementById('output-size');
+const frameColorSelect = document.getElementById('frame-color');
+const frameGapSelect   = document.getElementById('frame-gap');
 const gridPreview      = document.getElementById('grid-preview');
 const previewSection   = document.getElementById('preview-section');
 const emptyState       = document.getElementById('empty-state');
@@ -507,7 +526,24 @@ uploadZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => handleFiles(fileInput.files));
 clearBtn.addEventListener('click', clearAll);
 colsSelect.addEventListener('change', renderPreview);
+frameColorSelect.addEventListener('change', function () { applyFrameStyle(); renderPreview(); });
+frameGapSelect.addEventListener('change', function () { applyFrameStyle(); renderPreview(); });
 downloadBtn.addEventListener('click', exportCollage);
+
+function frameGapPx(totalSize) {
+  const mode = frameGapSelect.value;
+  const frac = mode === 'thin' ? 0.004 : mode === 'thick' ? 0.014 : 0.008;
+  return Math.max(2, Math.round(totalSize * frac));
+}
+
+function applyFrameStyle() {
+  const color = frameColorSelect.value || '#000000';
+  // Preview gap ~ medium look relative to preview box (~900px max)
+  const previewGap = frameGapSelect.value === 'thin' ? 3 : frameGapSelect.value === 'thick' ? 10 : 6;
+  gridPreview.style.setProperty('--frame-color', color);
+  gridPreview.style.setProperty('--frame-gap', previewGap + 'px');
+}
+applyFrameStyle();
 
 centerToggleCb.addEventListener('change', () => {
   const on = centerToggleCb.checked;
@@ -692,25 +728,27 @@ function exportCollage() {
   const { cols, rows } = getGrid(n);
   const order = buildOrder(n, cols, rows);
   const TOTAL_SIZE = parseInt(outputSize.value) || 3000;
-  const GAP = Math.max(2, Math.round(TOTAL_SIZE * 0.001));
-  // Square tiles; output size is the long side so Auto (cols===rows) stays a true square
+  const GAP = frameGapPx(TOTAL_SIZE);
+  const BORDER = GAP; // same width outer border as space between photos
+  const frameColor = frameColorSelect.value || '#000000';
+  // Square tiles; TOTAL_SIZE is outer edge including border
   const span = Math.max(cols, rows);
-  const cell = Math.floor((TOTAL_SIZE - GAP * (span - 1)) / span);
-  const canvasW = cell * cols + GAP * (cols - 1);
-  const canvasH = cell * rows + GAP * (rows - 1);
+  const cell = Math.floor((TOTAL_SIZE - BORDER * 2 - GAP * (span - 1)) / span);
+  const canvasW = BORDER * 2 + cell * cols + GAP * (cols - 1);
+  const canvasH = BORDER * 2 + cell * rows + GAP * (rows - 1);
 
   canvas.width  = canvasW;
   canvas.height = canvasH;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = frameColor;
   ctx.fillRect(0, 0, canvasW, canvasH);
 
   order.forEach((imgIdx, cellIdx) => {
     if (imgIdx === null) return;
     const col = cellIdx % cols;
     const row = Math.floor(cellIdx / cols);
-    const x = col * (cell + GAP);
-    const y = row * (cell + GAP);
+    const x = BORDER + col * (cell + GAP);
+    const y = BORDER + row * (cell + GAP);
     const img = images[imgIdx].img;
     const srcAspect = img.naturalWidth / img.naturalHeight;
     const dstAspect = 1;
