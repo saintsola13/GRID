@@ -578,8 +578,8 @@ function getGrid(n) {
   const sel = colsSelect.value;
   const centerOn = centerToggleCb.checked && centerIndex !== null;
 
-  if (sel === 'auto') {
-    // Square grid that grows with photo count (empty cells fill the rest)
+  if (sel === 'auto' || centerOn) {
+    // Square grid; odd side when center-pinned so the middle cell is real
     let side = Math.max(1, Math.ceil(Math.sqrt(n)));
     if (centerOn && side % 2 === 0) side++;
     while (side * side < n) {
@@ -590,15 +590,18 @@ function getGrid(n) {
   }
 
   let cols = parseInt(sel, 10);
-  if (centerOn && cols % 2 === 0) cols++;
   cols = Math.min(Math.max(1, cols), n);
   const rows = Math.ceil(n / cols);
   return { cols, rows };
 }
 
+function centerCellIndex(cols, rows) {
+  return Math.floor(rows / 2) * cols + Math.floor(cols / 2);
+}
+
 function buildOrder(n, cols, rows) {
   const total = cols * rows;
-  const centerCell = Math.floor(total / 2);
+  const centerCell = centerCellIndex(cols, rows);
   const useCenterFeature = centerToggleCb.checked && centerIndex !== null && n > 1;
 
   if (!useCenterFeature) {
@@ -608,12 +611,25 @@ function buildOrder(n, cols, rows) {
   const others = [];
   for (let i = 0; i < n; i++) { if (i !== centerIndex) others.push(i); }
 
-  const order = [];
-  let ptr = 0;
+  // Fill nearest cells around center first so empties stay on the outer edge
+  const cx = centerCell % cols;
+  const cy = Math.floor(centerCell / cols);
+  const slots = [];
   for (let i = 0; i < total; i++) {
-    if (i === centerCell) order.push(centerIndex);
-    else if (ptr < others.length) order.push(others[ptr++]);
-    else order.push(null);
+    if (i === centerCell) continue;
+    const x = i % cols;
+    const y = Math.floor(i / cols);
+    const dist = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+    slots.push({ i: i, dist: dist, y: y, x: x });
+  }
+  slots.sort(function (a, b) {
+    return a.dist - b.dist || a.y - b.y || a.x - b.x;
+  });
+
+  const order = Array(total).fill(null);
+  order[centerCell] = centerIndex;
+  for (let k = 0; k < others.length && k < slots.length; k++) {
+    order[slots[k].i] = others[k];
   }
   return order;
 }
@@ -631,7 +647,7 @@ function renderPreview() {
   const { cols, rows } = getGrid(n);
   const total = cols * rows;
   const order = buildOrder(n, cols, rows);
-  const centerCell = Math.floor(total / 2);
+  const centerCell = centerCellIndex(cols, rows);
   const useCenterFeature = centerToggleCb.checked && centerIndex !== null;
 
   gridPreview.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
