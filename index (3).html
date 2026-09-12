@@ -341,7 +341,32 @@ header {
   position: relative;
   min-height: 0;
   min-width: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
+#grid-preview .cell.has-photo { cursor: grab; }
+#grid-preview .cell.has-photo:active { cursor: grabbing; }
+#grid-preview .cell.drag-over {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+#grid-preview .cell.dragging { opacity: 0.35; }
+#drag-ghost {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  border: 1px solid var(--accent);
+  opacity: 0.92;
+  display: none;
+  transform: translate(-50%, -50%);
+}
+#drag-ghost img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 #grid-preview .cell img {
   width: 100%;
@@ -487,6 +512,7 @@ header {
   <div class="status" id="status-text"></div>
 </div>
 
+<div id="drag-ghost"><img alt=""></div>
 <canvas id="export-canvas"></canvas>
 
 <script>
@@ -514,6 +540,9 @@ const centerPlaceholder= document.getElementById('center-preview-placeholder');
 
 let images = [];
 let centerIndex = null;
+let manualOrder = null;
+let orderKey = '';
+let dragFrom = null;
 
 uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
@@ -525,7 +554,7 @@ uploadZone.addEventListener('drop', e => {
 
 fileInput.addEventListener('change', () => handleFiles(fileInput.files));
 clearBtn.addEventListener('click', clearAll);
-colsSelect.addEventListener('change', renderPreview);
+colsSelect.addEventListener('change', function () { manualOrder = null; renderPreview(); });
 frameColorSelect.addEventListener('change', function () { applyFrameStyle(); renderPreview(); });
 frameGapSelect.addEventListener('change', function () { applyFrameStyle(); renderPreview(); });
 downloadBtn.addEventListener('click', exportCollage);
@@ -549,6 +578,7 @@ centerToggleCb.addEventListener('change', () => {
   const on = centerToggleCb.checked;
   centerControls.classList.toggle('active', on);
   if (!on) { centerIndex = null; updateCenterPreview(); }
+  manualOrder = null;
   renderPreview();
 });
 
@@ -565,7 +595,7 @@ function handleFiles(files) {
       loaded++;
       updateCount();
       buildThumbStrip();
-      if (loaded === toAdd.length) renderPreview();
+      if (loaded === toAdd.length) { manualOrder = null; renderPreview(); }
     };
     img.src = url;
   });
@@ -593,6 +623,7 @@ function buildThumbStrip() {
         t.classList.toggle('selected', i === centerIndex);
       });
       updateCenterPreview();
+      manualOrder = null;
       renderPreview();
     });
     centerThumbStrip.appendChild(thumb);
@@ -635,6 +666,10 @@ function centerCellIndex(cols, rows) {
   return Math.floor(rows / 2) * cols + Math.floor(cols / 2);
 }
 
+function orderFingerprint(n, cols, rows) {
+  return [n, cols, rows, !!centerToggleCb.checked, centerIndex].join(':');
+}
+
 function buildOrder(n, cols, rows) {
   const total = cols * rows;
   const centerCell = centerCellIndex(cols, rows);
@@ -647,27 +682,85 @@ function buildOrder(n, cols, rows) {
   const others = [];
   for (let i = 0; i < n; i++) { if (i !== centerIndex) others.push(i); }
 
-  // Fill nearest cells around center first so empties stay on the outer edge
+  // Chebyshev rings around center; partial outer ring spaced evenly (symmetric)
   const cx = centerCell % cols;
   const cy = Math.floor(centerCell / cols);
-  const slots = [];
+  const rings = {};
   for (let i = 0; i < total; i++) {
     if (i === centerCell) continue;
     const x = i % cols;
     const y = Math.floor(i / cols);
-    const dist = (x - cx) * (x - cx) + (y - cy) * (y - cy);
-    slots.push({ i: i, dist: dist, y: y, x: x });
+    const cheb = Math.max(Math.abs(x - cx), Math.abs(y - cy));
+    const ang = Math.atan2(y - cy, x - cx);
+    if (!rings[cheb]) rings[cheb] = [];
+    rings[cheb].push({ i: i, ang: ang });
   }
-  slots.sort(function (a, b) {
-    return a.dist - b.dist || a.y - b.y || a.x - b.x;
+  Object.keys(rings).forEach(function (k) {
+    rings[k].sort(function (a, b) { return a.ang - b.ang; });
   });
+
+  function pickEven(arr, count) {
+    if (count >= arr.length) return arr.map(function (s) { return s.i; });
+    var out = [];
+    var used = {};
+    for (var j = 0; j < count; j++) {
+      var idx = Math.floor(j * arr.length / count);
+      while (used[idx]) idx = (idx + 1) % arr.length;
+      used[idx] = true;
+      out.push(arr[idx].i);
+    }
+    return out;
+  }
+
+  var slots = [];
+  var need = others.length;
+  var ringKeys = Object.keys(rings).map(Number).sort(function (a, b) { return a - b; });
+  for (var r = 0; r < ringKeys.length && need > 0; r++) {
+    var ring = rings[ringKeys[r]];
+    var take = Math.min(need, ring.length);
+    slots = slots.concat(pickEven(ring, take));
+    need -= take;
+  }
 
   const order = Array(total).fill(null);
   order[centerCell] = centerIndex;
-  for (let k = 0; k < others.length && k < slots.length; k++) {
-    order[slots[k].i] = others[k];
+  for (var k = 0; k < others.length && k < slots.length; k++) {
+    order[slots[k]] = others[k];
   }
   return order;
+}
+
+function getOrder(n, cols, rows) {
+  const key = orderFingerprint(n, cols, rows);
+  const total = cols * rows;
+  if (manualOrder && manualOrder.length === total && orderKey === key) {
+    return manualOrder.slice();
+  }
+  orderKey = key;
+  manualOrder = null;
+  return buildOrder(n, cols, rows);
+}
+
+function swapCells(fromIdx, toIdx) {
+  if (fromIdx === toIdx || fromIdx == null || toIdx == null) return;
+  const n = images.length;
+  const { cols, rows } = getGrid(n);
+  const total = cols * rows;
+  if (fromIdx < 0 || toIdx < 0 || fromIdx >= total || toIdx >= total) return;
+  const order = getOrder(n, cols, rows);
+  const tmp = order[fromIdx];
+  order[fromIdx] = order[toIdx];
+  order[toIdx] = tmp;
+  // Keep center pin on whichever image sits in the center cell after the swap
+  const centerCell = centerCellIndex(cols, rows);
+  if (centerToggleCb.checked && order[centerCell] != null) {
+    centerIndex = order[centerCell];
+    updateCenterPreview();
+    buildThumbStrip();
+  }
+  orderKey = orderFingerprint(n, cols, rows);
+  manualOrder = order;
+  renderPreview();
 }
 
 function renderPreview() {
@@ -681,8 +774,7 @@ function renderPreview() {
   previewSection.style.display = 'block';
 
   const { cols, rows } = getGrid(n);
-  const total = cols * rows;
-  const order = buildOrder(n, cols, rows);
+  const order = getOrder(n, cols, rows);
   const centerCell = centerCellIndex(cols, rows);
   const useCenterFeature = centerToggleCb.checked && centerIndex !== null;
 
@@ -693,24 +785,100 @@ function renderPreview() {
   order.forEach((imgIdx, cellIdx) => {
     const cell = document.createElement('div');
     const isEmpty = imgIdx === null;
-    const isCenterCell = useCenterFeature && cellIdx === centerCell;
-    cell.className = 'cell' + (isEmpty ? ' empty' : '') + (isCenterCell ? ' center-cell' : '');
+    const isCenterCell = useCenterFeature && imgIdx === centerIndex;
+    cell.className = 'cell' + (isEmpty ? ' empty' : ' has-photo') + (isCenterCell ? ' center-cell' : '');
+    cell.dataset.cellIdx = String(cellIdx);
     if (!isEmpty) {
       const im = document.createElement('img');
       im.src = images[imgIdx].url;
+      im.draggable = false;
       cell.appendChild(im);
     }
     gridPreview.appendChild(cell);
   });
 
+  bindCellDrag(order);
+
   const centerNote = useCenterFeature ? ' · center pinned' : '';
-  statusText.textContent = cols + ' cols × ' + rows + ' rows — ' + n + ' photos' + centerNote;
+  statusText.textContent = cols + ' cols × ' + rows + ' rows — ' + n + ' photos' + centerNote + ' · drag to rearrange';
+}
+
+function bindCellDrag(order) {
+  const ghost = document.getElementById('drag-ghost');
+  const ghostImg = ghost.querySelector('img');
+  let fromIdx = null;
+  let activeCell = null;
+  let moved = false;
+
+  function cellFromPoint(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    return el.closest ? el.closest('#grid-preview .cell') : null;
+  }
+
+  function clearOver() {
+    gridPreview.querySelectorAll('.cell.drag-over').forEach(function (c) {
+      c.classList.remove('drag-over');
+    });
+  }
+
+  function onMove(e) {
+    if (fromIdx == null) return;
+    moved = true;
+    e.preventDefault();
+    ghost.style.left = e.clientX + 'px';
+    ghost.style.top = e.clientY + 'px';
+    clearOver();
+    const over = cellFromPoint(e.clientX, e.clientY);
+    if (over && Number(over.dataset.cellIdx) !== fromIdx) {
+      over.classList.add('drag-over');
+    }
+  }
+
+  function onUp(e) {
+    if (fromIdx == null) return;
+    e.preventDefault();
+    clearOver();
+    ghost.style.display = 'none';
+    if (activeCell) activeCell.classList.remove('dragging');
+    const over = cellFromPoint(e.clientX, e.clientY);
+    const toIdx = over ? Number(over.dataset.cellIdx) : null;
+    const start = fromIdx;
+    fromIdx = null;
+    activeCell = null;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    if (moved && toIdx != null && toIdx !== start) {
+      swapCells(start, toIdx);
+    }
+  }
+
+  gridPreview.querySelectorAll('.cell.has-photo').forEach(function (cell) {
+    cell.addEventListener('pointerdown', function (e) {
+      if (e.button != null && e.button !== 0) return;
+      fromIdx = Number(cell.dataset.cellIdx);
+      activeCell = cell;
+      moved = false;
+      const imgIdx = order[fromIdx];
+      if (imgIdx == null) return;
+      ghostImg.src = images[imgIdx].url;
+      ghost.style.display = 'block';
+      ghost.style.left = e.clientX + 'px';
+      ghost.style.top = e.clientY + 'px';
+      cell.classList.add('dragging');
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', onUp, { passive: false });
+      window.addEventListener('pointercancel', onUp, { passive: false });
+    });
+  });
 }
 
 function clearAll() {
   images.forEach(i => URL.revokeObjectURL(i.url));
   images = [];
   centerIndex = null;
+  manualOrder = null;
   centerToggleCb.checked = false;
   centerControls.classList.remove('active');
   updateCenterPreview();
@@ -726,7 +894,7 @@ function exportCollage() {
   downloadBtn.textContent = 'Rendering...';
 
   const { cols, rows } = getGrid(n);
-  const order = buildOrder(n, cols, rows);
+  const order = getOrder(n, cols, rows);
   const TOTAL_SIZE = parseInt(outputSize.value) || 3000;
   const GAP = frameGapPx(TOTAL_SIZE);
   const BORDER = GAP; // same width outer border as space between photos
