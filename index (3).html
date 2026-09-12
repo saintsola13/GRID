@@ -322,19 +322,23 @@ header {
 
 #grid-preview {
   width: 100%;
+  max-width: min(100%, 70vh);
+  aspect-ratio: 1;
   display: grid;
   gap: var(--gap);
   background: #111;
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
+  margin-inline: auto;
 }
 
 #grid-preview .cell {
-  aspect-ratio: 1;
   overflow: hidden;
   background: #1a1a1a;
   position: relative;
+  min-height: 0;
+  min-width: 0;
 }
 
 #grid-preview .cell img {
@@ -572,9 +576,22 @@ function updateCenterPreview() {
 
 function getGrid(n) {
   const sel = colsSelect.value;
-  let cols = sel === 'auto' ? Math.ceil(Math.sqrt(n)) : parseInt(sel);
-  if (centerToggleCb.checked && centerIndex !== null && cols % 2 === 0) cols++;
-  cols = Math.min(cols, n);
+  const centerOn = centerToggleCb.checked && centerIndex !== null;
+
+  if (sel === 'auto') {
+    // Square grid that grows with photo count (empty cells fill the rest)
+    let side = Math.max(1, Math.ceil(Math.sqrt(n)));
+    if (centerOn && side % 2 === 0) side++;
+    while (side * side < n) {
+      side++;
+      if (centerOn && side % 2 === 0) side++;
+    }
+    return { cols: side, rows: side };
+  }
+
+  let cols = parseInt(sel, 10);
+  if (centerOn && cols % 2 === 0) cols++;
+  cols = Math.min(Math.max(1, cols), n);
   const rows = Math.ceil(n / cols);
   return { cols, rows };
 }
@@ -618,6 +635,7 @@ function renderPreview() {
   const useCenterFeature = centerToggleCb.checked && centerIndex !== null;
 
   gridPreview.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+  gridPreview.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
   gridPreview.innerHTML = '';
 
   order.forEach((imgIdx, cellIdx) => {
@@ -658,11 +676,12 @@ function exportCollage() {
   const { cols, rows } = getGrid(n);
   const order = buildOrder(n, cols, rows);
   const TOTAL_SIZE = parseInt(outputSize.value) || 3000;
-  const GAP   = Math.max(2, Math.round(TOTAL_SIZE * 0.001));
-  const cellW = Math.floor((TOTAL_SIZE - GAP * (cols - 1)) / cols);
-  const cellH = Math.floor((TOTAL_SIZE - GAP * (rows - 1)) / rows);
-  const canvasW = cellW * cols + GAP * (cols - 1);
-  const canvasH = cellH * rows + GAP * (rows - 1);
+  const GAP = Math.max(2, Math.round(TOTAL_SIZE * 0.001));
+  // Square tiles; output size is the long side so Auto (cols===rows) stays a true square
+  const span = Math.max(cols, rows);
+  const cell = Math.floor((TOTAL_SIZE - GAP * (span - 1)) / span);
+  const canvasW = cell * cols + GAP * (cols - 1);
+  const canvasH = cell * rows + GAP * (rows - 1);
 
   canvas.width  = canvasW;
   canvas.height = canvasH;
@@ -674,11 +693,11 @@ function exportCollage() {
     if (imgIdx === null) return;
     const col = cellIdx % cols;
     const row = Math.floor(cellIdx / cols);
-    const x = col * (cellW + GAP);
-    const y = row * (cellH + GAP);
+    const x = col * (cell + GAP);
+    const y = row * (cell + GAP);
     const img = images[imgIdx].img;
     const srcAspect = img.naturalWidth / img.naturalHeight;
-    const dstAspect = cellW / cellH;
+    const dstAspect = 1;
     let sx, sy, sw, sh;
     if (srcAspect > dstAspect) {
       sh = img.naturalHeight; sw = sh * dstAspect;
@@ -687,7 +706,7 @@ function exportCollage() {
       sw = img.naturalWidth; sh = sw / dstAspect;
       sx = 0; sy = (img.naturalHeight - sh) / 2;
     }
-    ctx.drawImage(img, sx, sy, sw, sh, x, y, cellW, cellH);
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, cell, cell);
   });
 
   canvas.toBlob(blob => {
